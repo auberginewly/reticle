@@ -66,6 +66,30 @@ describe('isInViewport (#398)', () => {
     expect(isInViewport(el)).toBe(false);
   });
 
+  it.each(['auto', 'scroll'])(
+    'keeps overflow:%s viewport checks relative to the window',
+    (overflow) => {
+      const scrollport = boxed({
+        top: 0,
+        left: 0,
+        bottom: 100,
+        right: 100,
+        width: 100,
+        height: 100,
+      });
+      scrollport.style.overflow = overflow;
+      scrollport.style.overflowX = overflow;
+      scrollport.style.overflowY = overflow;
+      const el = boxed({ top: 120, left: 10, bottom: 140, right: 90, width: 80, height: 20 });
+      scrollport.append(el);
+      expect(isVisible(el)).toBe(true);
+      expect(isInViewport(el)).toBe(true);
+      el.getBoundingClientRect = () => new DOMRect(10, 2000, 80, 20);
+      expect(isVisible(el)).toBe(true);
+      expect(isInViewport(el)).toBe(false);
+    },
+  );
+
   it('excludes fully clipped boxes inside the window while retaining partial overlaps', () => {
     const clip = boxed({ top: 0, left: 0, bottom: 100, right: 100, width: 100, height: 100 });
     clip.style.overflow = 'hidden';

@@ -56,6 +56,14 @@ const html = `<!doctype html><html><head><title>Overflow visibility</title></hea
   Inline<span id="inline-fixed" style="position:fixed;top:550px;left:400px">Inline escaping paragraph.</span>
 </span></div>
 <button data-testid="mount-slots" onclick="mountSlots()">Mount slots</button>
+<div id="scroll-auto" style="height:30px;width:160px;overflow:auto">
+  <p id="scroll-auto-text" style="margin:80px 0 0">Auto scrollport paragraph.</p>
+  <button data-testid="scroll-auto-action">Auto scrollport action</button>
+</div>
+<div id="scroll-scroll" style="height:30px;width:160px;overflow:scroll">
+  <p id="scroll-scroll-text" style="margin:80px 0 0">Scroll scrollport paragraph.</p>
+  <button data-testid="scroll-scroll-action">Scroll scrollport action</button>
+</div>
 <script>
 function rect(id) {
   const el = document.getElementById(id);
@@ -89,7 +97,10 @@ fetch('/layout', { method: 'POST', body: JSON.stringify({
   later: { top: later.top, bottom: later.bottom, width: later.width, height: later.height },
   partialClamp: rect('partial'),
   partial: { top: partial.top, bottom: partial.bottom, width: partial.width, height: partial.height },
-  controls, transformedWithoutClip
+  controls, transformedWithoutClip,
+  scrollports: ['auto', 'scroll'].map(kind => ({
+    kind, port: rect('scroll-' + kind), text: rect('scroll-' + kind + '-text')
+  }))
 }) });
 function expand() { document.getElementById('clamped').style.maxHeight = 'none'; }
 function mountSlots() {
@@ -209,6 +220,26 @@ try {
     timeout_ms: 0,
   });
   check('assert accepts the partially visible text', partialAssert.pass === true && partialAssert.verified === 'yes');
+
+  for (const { kind, port, text } of layout.scrollports) {
+    check(`the overflow:${kind} paragraph is outside its real scrollport`, text.top >= port.bottom);
+    const content = kind === 'auto' ? 'Auto scrollport paragraph.' : 'Scroll scrollport paragraph.';
+    const query = await call('reticle_query', { sessionId, by: 'text', value: content });
+    check(`query retains overflow:${kind} text visibility`,
+      query.count === 1 && query.elements[0]?.visible === true, JSON.stringify(query));
+    const asserted = await call('reticle_assert', {
+      sessionId, predicate: { kind: 'text', contains: content, visible: true }, timeout_ms: 0,
+    });
+    check(`assert retains overflow:${kind} text visibility`, asserted.pass === true && asserted.verified === 'yes');
+    const receipt = await call('reticle_act', {
+      sessionId, action: 'focus', target: { testid: 'scroll-' + kind + '-action' },
+    });
+    // The public lean receipt omits visible:true; a false value must remain observable.
+    check(`the overflow:${kind} action receipt retains visible:true`,
+      receipt.dispatched === true && receipt.result?.ok === true &&
+      receipt.result.dispatched === true && typeof receipt.result.effect === 'object' &&
+      receipt.result.effect.visible !== false, JSON.stringify(receipt));
+  }
 
   for (const [text, visible] of [
     ['Escaping absolute paragraph.', true],

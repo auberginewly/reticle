@@ -426,13 +426,11 @@ function stalledFade(el: Element): boolean {
  * walk. The one ancestor reading is `hiddenInsideClosedDetails`, which consults only the nearest
  * `<details>` boundary; composing the chain is still isVisible's job.
  */
-function selfHidden(el: Element): boolean {
+function selfHidden(el: Element, style: CSSStyleDeclaration | null): boolean {
   if ('true' === el.getAttribute('aria-hidden')) return true;
   if (isHtmlElement(el) && el.hidden) return true;
   if (hiddenInsideClosedDetails(el)) return true;
-  const view = el.ownerDocument.defaultView;
-  if (view !== null) {
-    const style = view.getComputedStyle(el);
+  if (style !== null) {
     if (
       'none' === style.display ||
       'hidden' === style.visibility ||
@@ -484,7 +482,7 @@ function parentAcrossShadowBoundary(el: Element): Element | null {
   return host ?? null;
 }
 
-const CLIPPING_OVERFLOW = new Set(['hidden', 'clip', 'auto', 'scroll']);
+const CLIPPING_OVERFLOW = new Set(['hidden', 'clip']);
 const NON_CLIPPING_DISPLAY = new Set([
   'contents',
   'table-row',
@@ -524,6 +522,10 @@ type VisibleBounds = Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom' | 'width'
 interface VisibilityInfo {
   hidden: boolean;
   style: CSSStyleDeclaration | null;
+  parent: Element | null;
+  clipX: boolean;
+  clipY: boolean;
+  hasClipping: boolean;
   clipBox?: VisibleBounds;
 }
 
@@ -545,9 +547,36 @@ function visibilityInfoMemo(memo?: Map<Element, boolean>): Map<Element, Visibili
 function ownVisibilityInfo(el: Element, memo: Map<Element, VisibilityInfo>): VisibilityInfo {
   let info = memo.get(el);
   if (info === undefined) {
+    const style = el.ownerDocument.defaultView?.getComputedStyle(el) ?? null;
+    // Own hiding needs no ancestor metadata: preserve the early return for hidden targets,
+    // including deeply nested ones. This cached CSS result never stands for clipped geometry.
+    if (selfHidden(el, style)) {
+      info = { hidden: true, style, parent: null, clipX: false, clipY: false, hasClipping: false };
+      memo.set(el, info);
+      return info;
+    }
+    const parent = parentAcrossShadowBoundary(el);
+    const inherited = null === parent ? undefined : ownVisibilityInfo(parent, memo);
+    const [overflowX, overflowY] = overflowAxes(style);
+    const root = el.ownerDocument.documentElement;
+    // Root/body overflow propagated to the viewport stays separate from element visibility.
+    const viewportOverflow =
+      el === root ||
+      (el === el.ownerDocument.body &&
+        overflowAxes(ownVisibilityInfo(root, memo).style).every((axis) => 'visible' === axis));
+    const hasClipBox =
+      !viewportOverflow &&
+      !NON_CLIPPING_DISPLAY.has(style?.display ?? '') &&
+      !(isHtmlElement(el) && 'inline' === style?.display);
+    const clipX = hasClipBox && CLIPPING_OVERFLOW.has(overflowX);
+    const clipY = hasClipBox && CLIPPING_OVERFLOW.has(overflowY);
     info = {
-      hidden: selfHidden(el),
-      style: el.ownerDocument.defaultView?.getComputedStyle(el) ?? null,
+      hidden: true === inherited?.hidden,
+      style,
+      parent,
+      clipX,
+      clipY,
+      hasClipping: clipX || clipY || true === inherited?.hasClipping,
     };
     memo.set(el, info);
   }
@@ -569,9 +598,9 @@ function positionedContainingBlock(
   memo: Map<Element, VisibilityInfo>,
 ): Element | null {
   for (
-    let parent = parentAcrossShadowBoundary(el);
+    let parent = ownVisibilityInfo(el, memo).parent;
     parent !== null;
-    parent = parentAcrossShadowBoundary(parent)
+    parent = ownVisibilityInfo(parent, memo).parent
   ) {
     const style = ownVisibilityInfo(parent, memo).style;
     if (null === style || 'contents' === style.display) continue;
@@ -677,49 +706,31 @@ function visibleBounds(
   initial?: VisibleBounds,
 ): VisibleBounds | null | undefined {
   let bounds = initial;
+  const target = ownVisibilityInfo(el, memo);
+  if (target.hidden) return null;
+  // CSS hiding composes, geometry does not. An unclipped ancestor chain needs no layout reads
+  // or repeated walk; a clipped parent can still have a descendant overflowing back into view.
+  if (null === target.parent || !ownVisibilityInfo(target.parent, memo).hasClipping) return bounds;
   let clipFrom: Element | null | undefined;
   for (
     let current: Element | null = el;
     current !== null;
-    current = parentAcrossShadowBoundary(current)
+    current = ownVisibilityInfo(current, memo).parent
   ) {
     const info = ownVisibilityInfo(current, memo);
     if (info.hidden) return null;
     if (current === clipFrom) clipFrom = undefined;
     const style = info.style;
-    const [overflowX, overflowY] = overflowAxes(style);
-    const root = current.ownerDocument.documentElement;
-    // Root overflow, and body overflow propagated by a visible root, clip the viewport rather
-    // than the element's box. Keep off-window visibility distinct from isInViewport.
-    const viewportOverflow =
-      current === root ||
-      (current === current.ownerDocument.body &&
-        overflowAxes(ownVisibilityInfo(root, memo).style).every((axis) => 'visible' === axis));
-    const hasClipBox =
-      !viewportOverflow &&
-      !NON_CLIPPING_DISPLAY.has(style?.display ?? '') &&
-      !(isHtmlElement(current) && 'inline' === style?.display);
-    if (
-      current !== el &&
-      undefined === clipFrom &&
-      hasClipBox &&
-      (CLIPPING_OVERFLOW.has(overflowX) || CLIPPING_OVERFLOW.has(overflowY))
-    ) {
+    if (current !== el && undefined === clipFrom && (info.clipX || info.clipY)) {
       bounds ??= el.getBoundingClientRect();
       // Preserve the existing visibility semantics for elements without an own layout box
       // (including display:contents); inViewport still requires a positive-size box.
       if (bounds.width > 0 && bounds.height > 0) {
         const clip = clippingBox(current, info);
-        const left = CLIPPING_OVERFLOW.has(overflowX)
-          ? Math.max(bounds.left, clip.left)
-          : bounds.left;
-        const right = CLIPPING_OVERFLOW.has(overflowX)
-          ? Math.min(bounds.right, clip.right)
-          : bounds.right;
-        const top = CLIPPING_OVERFLOW.has(overflowY) ? Math.max(bounds.top, clip.top) : bounds.top;
-        const bottom = CLIPPING_OVERFLOW.has(overflowY)
-          ? Math.min(bounds.bottom, clip.bottom)
-          : bounds.bottom;
+        const left = info.clipX ? Math.max(bounds.left, clip.left) : bounds.left;
+        const right = info.clipX ? Math.min(bounds.right, clip.right) : bounds.right;
+        const top = info.clipY ? Math.max(bounds.top, clip.top) : bounds.top;
+        const bottom = info.clipY ? Math.min(bounds.bottom, clip.bottom) : bounds.bottom;
         if (right <= left || bottom <= top) return null;
         bounds = { left, right, top, bottom, width: right - left, height: bottom - top };
       }

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getAccessibleName, isVisible } from './a11y.js';
 import { installShadowRegistry } from './shadow-registry.js';
 import { matchQuery } from './query.js';
@@ -176,6 +176,31 @@ describe('a closed native <details> hides what the summary does not contain', ()
       outer.remove();
     }
   });
+});
+
+describe('own hiding short-circuits ancestor metadata', () => {
+  it.each(['hidden', 'aria-hidden', 'display:none'])(
+    'does not resolve ancestor styles for a target hidden by %s',
+    (signal) => {
+      const outer = document.createElement('div');
+      const inner = document.createElement('div');
+      const button = document.createElement('button');
+      if ('hidden' === signal) button.hidden = true;
+      else if ('aria-hidden' === signal) button.setAttribute('aria-hidden', 'true');
+      else button.style.display = 'none';
+      inner.append(button);
+      outer.append(inner);
+      document.body.append(outer);
+      const styles = vi.spyOn(window, 'getComputedStyle');
+      try {
+        expect(isVisible(button, new Map())).toBe(false);
+        expect(styles.mock.calls.every(([element]) => element === button)).toBe(true);
+      } finally {
+        styles.mockRestore();
+        outer.remove();
+      }
+    },
+  );
 });
 
 describe('visibility composes across a shadow boundary', () => {
@@ -543,11 +568,76 @@ describe('visibility inside overflow clipping ancestors', () => {
     document.body.innerHTML = '';
   });
 
-  it.each(['hidden', 'clip', 'auto', 'scroll'])(
+  it.each(['hidden', 'clip'])(
     'hides a box completely below an overflow:%s ancestor',
     (overflow) => {
       const { child } = mount(overflow);
       expect(isVisible(child)).toBe(false);
+    },
+  );
+
+  it.each(['auto', 'scroll'])(
+    'keeps a box outside an overflow:%s scrollport visible without reading layout',
+    (overflow) => {
+      const { clip, child } = mount(overflow);
+      const clipRect = vi.spyOn(clip, 'getBoundingClientRect');
+      const childRect = vi.spyOn(child, 'getBoundingClientRect');
+      expect(isVisible(child, new Map())).toBe(true);
+      expect(clipRect).not.toHaveBeenCalled();
+      expect(childRect).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['auto', 'scroll'])(
+    'keeps below-the-fold overflow:%s text in visible queries',
+    (overflow) => {
+      const { child } = mount(overflow);
+      child.dataset.testid = 'scroll-row';
+      box(child, 10, 2000, 80, 20);
+      expect(matchQuery({ testid: 'scroll-row' }, 'visible').count).toBe(1);
+      expect(matchQuery({ text: 'Later paragraph' }, 'visible').count).toBe(1);
+    },
+  );
+
+  it.each(['auto', 'scroll'])(
+    'still applies an outer hidden clip around an overflow:%s scrollport',
+    (overflow) => {
+      const { clip, child } = mount(overflow);
+      const outer = document.createElement('div');
+      outer.style.overflow = 'hidden';
+      outer.style.overflowX = 'hidden';
+      outer.style.overflowY = 'hidden';
+      clip.replaceWith(outer);
+      outer.append(clip);
+      box(outer, 0, 0, 100, 100);
+      expect(isVisible(child)).toBe(false);
+    },
+  );
+
+  it.each(['auto', 'scroll'])(
+    'still applies an inner hidden clip inside an overflow:%s scrollport',
+    (overflow) => {
+      const { clip, child } = mount();
+      const outer = document.createElement('div');
+      outer.style.overflow = overflow;
+      outer.style.overflowX = overflow;
+      outer.style.overflowY = overflow;
+      clip.replaceWith(outer);
+      outer.append(clip);
+      box(outer, 0, 0, 100, 100);
+      expect(isVisible(child)).toBe(false);
+    },
+  );
+
+  it.each(['overflowX', 'overflowY'] as const)(
+    'clips the hidden %s axis while preserving the other auto axis',
+    (axis) => {
+      const { clip, child } = mount('auto');
+      clip.style[axis] = 'hidden';
+      box(child, 120, 120, 20, 20);
+      expect(isVisible(child)).toBe(false);
+      box(child, 'overflowX' === axis ? 10 : 120, 'overflowY' === axis ? 10 : 120, 20, 20);
+      expect(isVisible(child)).toBe(true);
     },
   );
 

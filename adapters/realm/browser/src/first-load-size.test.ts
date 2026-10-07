@@ -320,9 +320,12 @@ const DIST_ENTRY = join(PACKAGE_ROOT, 'dist', 'index.js');
 /*
  * Raised to 256,900 for target-specific overflow visibility. Rebuilding this tree with only the
  * a11y and visible-text production changes removed measured 252,517 B; restoring them measured
- * 255,933 B (+3,416 B). This buys composed ancestor clipping and positioned containing-block
+ * 256,176 B (+3,659 B). This buys composed ancestor clipping and positioned containing-block
  * handling so an Expand click proves newly visible text instead of reporting `already_true`.
- * The ceiling retains 967 B of headroom; no dependency or protocol schema was added.
+ * The per-pass CSS/clipping cache adds 243 B versus the first PR revision and avoids repeat
+ * ancestor/style reads on unclipped lists. Only hidden/clip constrain visibility; auto/scroll
+ * keep their previous semantics. The ceiling retains 724 B of headroom; no dependency or
+ * protocol schema was added.
  */
 const MAX_FIRST_LOAD_BYTES = 256_900;
 /*
