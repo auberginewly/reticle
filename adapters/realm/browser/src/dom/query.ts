@@ -112,10 +112,11 @@ function directText(el: Element): string {
  * leaves ours out, which pointing an agent at "Pause" or "Export" did not.
  */
 function visibleTextOf(el: Element, memo: Map<Element, boolean>): string {
-  if (isNonRendered(el) || isIgnored(el) || !isVisible(el, memo)) return '';
+  if (isNonRendered(el) || isIgnored(el)) return '';
+  const visible = isVisible(el, memo);
   let text = '';
   for (const node of Array.from(el.childNodes)) {
-    if (Node.TEXT_NODE === node.nodeType) text += node.textContent ?? '';
+    if (Node.TEXT_NODE === node.nodeType && visible) text += node.textContent ?? '';
     else if (isElement(node)) text += visibleTextOf(node, memo);
   }
   return text;

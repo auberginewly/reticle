@@ -317,7 +317,14 @@ const DIST_ENTRY = join(PACKAGE_ROOT, 'dist', 'index.js');
  * Raised to 253,000 (252,035 measured) when the storage observer began skipping the SDK's own
  * keys: the list has to be on the page for the observer to read it, not only in the lazy HUD.
  */
-const MAX_FIRST_LOAD_BYTES = 253_000;
+/*
+ * Raised to 256,900 for target-specific overflow visibility. Rebuilding this tree with only the
+ * a11y and visible-text production changes removed measured 252,517 B; restoring them measured
+ * 255,933 B (+3,416 B). This buys composed ancestor clipping and positioned containing-block
+ * handling so an Expand click proves newly visible text instead of reporting `already_true`.
+ * The ceiling retains 967 B of headroom; no dependency or protocol schema was added.
+ */
+const MAX_FIRST_LOAD_BYTES = 256_900;
 /*
  * Raised 248_300 -> 248_400 for rail slide impressions: `HudUseData` gained an optional `slide`
  * string, its shape checked in the daemon where it is counted, as control ids already are. The
