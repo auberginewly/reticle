@@ -317,7 +317,12 @@ const DIST_ENTRY = join(PACKAGE_ROOT, 'dist', 'index.js');
  * Raised to 253,000 (252,035 measured) when the storage observer began skipping the SDK's own
  * keys: the list has to be on the page for the observer to read it, not only in the lazy HUD.
  */
-const MAX_FIRST_LOAD_BYTES = 253_000;
+/*
+ * Raised to 254,100 for blind-spot withdrawal and scroll-coordinate normalization: 155 B measured
+ * (252,970 -> 253,125) by reverting only those two compiled modules. Both run in the page and keep
+ * absence verdicts honest; no dependency was added. Keeps the same roughly 1,000 B of headroom.
+ */
+const MAX_FIRST_LOAD_BYTES = 254_100;
 /*
  * Raised 248_300 -> 248_400 for rail slide impressions: `HudUseData` gained an optional `slide`
  * string, its shape checked in the daemon where it is counted, as control ids already are. The
