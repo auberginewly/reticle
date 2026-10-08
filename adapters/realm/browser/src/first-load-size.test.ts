@@ -325,9 +325,11 @@ const DIST_ENTRY = join(PACKAGE_ROOT, 'dist', 'index.js');
  * The per-pass CSS/clipping cache adds 243 B versus the first PR revision and avoids repeat
  * ancestor/style reads on unclipped lists. Only hidden/clip constrain visibility; auto/scroll
  * keep their previous semantics. No dependency or protocol schema was added. Re-measured at
- * 256,176 B after merging main; the ceiling is that rounded up to the next hundred.
+ * 256,176 B after merging main. Main then gained the keypress key codes, the image-alt check and the
+ * unreachable-warning text, and the merge measured 256,653 B; the ceiling is that rounded up to the
+ * next hundred.
  */
-const MAX_FIRST_LOAD_BYTES = 256_200;
+const MAX_FIRST_LOAD_BYTES = 256_700;
 /*
  * Raised 248_300 -> 248_400 for rail slide impressions: `HudUseData` gained an optional `slide`
  * string, its shape checked in the daemon where it is counted, as control ids already are. The
