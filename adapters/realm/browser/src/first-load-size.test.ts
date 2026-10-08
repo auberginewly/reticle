@@ -318,16 +318,16 @@ const DIST_ENTRY = join(PACKAGE_ROOT, 'dist', 'index.js');
  * keys: the list has to be on the page for the observer to read it, not only in the lazy HUD.
  */
 /*
- * Raised to 256,900 for target-specific overflow visibility. Rebuilding this tree with only the
+ * Raised to 256,200 for target-specific overflow visibility. Rebuilding this tree with only the
  * a11y and visible-text production changes removed measured 252,517 B; restoring them measured
  * 256,176 B (+3,659 B). This buys composed ancestor clipping and positioned containing-block
  * handling so an Expand click proves newly visible text instead of reporting `already_true`.
  * The per-pass CSS/clipping cache adds 243 B versus the first PR revision and avoids repeat
  * ancestor/style reads on unclipped lists. Only hidden/clip constrain visibility; auto/scroll
- * keep their previous semantics. The ceiling retains 724 B of headroom; no dependency or
- * protocol schema was added.
+ * keep their previous semantics. No dependency or protocol schema was added. Re-measured at
+ * 256,176 B after merging main; the ceiling is that rounded up to the next hundred.
  */
-const MAX_FIRST_LOAD_BYTES = 256_900;
+const MAX_FIRST_LOAD_BYTES = 256_200;
 /*
  * Raised 248_300 -> 248_400 for rail slide impressions: `HudUseData` gained an optional `slide`
  * string, its shape checked in the daemon where it is counted, as control ids already are. The
