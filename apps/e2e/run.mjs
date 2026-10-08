@@ -105,6 +105,8 @@ const ORDER = [
   // A file input, an unnamed icon button and a canvas — three properties `apps/` had no fixture for.
   'awkward-controls-test',
   'multi-agent-lease-test',
+  // Permissions on a leased context, read from inside a real page. Serves its own page.
+  'lease-permissions-test',
   'atlas-hard-fixture-test',
   // Drives a real session and then checks that the EVENTS describe it — a different question from
   // telemetry-events-test, which only proves each kind can be sent. Owns a browser and writes a flow,
